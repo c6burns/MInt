@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.29102.190
 MinimumVisualStudioVersion = 15.0.26124.0
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MIntsrument", "MInstrument\MIntsrument.csproj", "{F672785F-0B7B-438C-9E03-24FA26E8FD34}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MIntsrument", "MIntstrument\MIntsrument.csproj", "{F672785F-0B7B-438C-9E03-24FA26E8FD34}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MStats", "MStats\MStats.csproj", "{A84FC68D-6FFB-4F91-AC12-1558BE92A9B9}"
 EndProject
