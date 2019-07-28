@@ -8,6 +8,7 @@ namespace HelloWorld
         {
             MInt.MStats.Setup();
             PrintHelloWorld();
+            ThrowError(12344);
         }
 
         static void PrintHelloWorld()
