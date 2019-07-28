@@ -5,22 +5,23 @@ using System.Reflection;
 using System.Collections.Generic;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
+using Mono.Cecil.Rocks;
 
 namespace MInt
 {
     public static class OPInject
     {
         public static bool LogToConsole { get; set; }
-        public static List<Assembly> TargetAssemblies { get; set; }
-        public static List<Assembly> ReferenceAssemblies { get; set; }
+        public static List<string> TargetAssemblies { get; set; }
+        public static List<string> ReferenceAssemblies { get; set; }
         public static List<string> MethodSignatures { get; set; }
 
         static HashSet<string> _refPathsHash = new HashSet<string>();
         
         static OPInject()
         {
-            TargetAssemblies = new List<Assembly>();
-            ReferenceAssemblies = new List<Assembly>();
+            TargetAssemblies = new List<string>();
+            ReferenceAssemblies = new List<string>();
             MethodSignatures = new List<string>();
 
 #if DEBUG
@@ -28,36 +29,33 @@ namespace MInt
 #endif
         }
 
-        public static void AddTarget(string targetPath)
-        {
-            AddTarget(Assembly.LoadFrom(targetPath));
-        }
-
         public static void AddTargets(string[] targetPaths)
         {
             foreach (string targetPath in targetPaths)
             {
-                AddTarget(Assembly.LoadFrom(targetPath));
+                AddTarget(targetPath);
             }
         }
 
-        public static void AddTarget(Assembly target)
+        public static void AddTarget(string targetPath)
         {
-            if (target == null) return;
-
-            foreach (AssemblyName asmName in target.GetReferencedAssemblies())
+            using (AssemblyDefinition targetDef = AssemblyDefinition.ReadAssembly(targetPath))
             {
-                Console.WriteLine("Adding Reference: {0}", asmName.Name);
-                AddReference(Assembly.Load(asmName));
+                foreach (AssemblyNameReference asmRefName in targetDef.MainModule.AssemblyReferences)
+                {
+                    Console.WriteLine("Adding Reference: {0}", asmRefName.FullName);
+                    //Assembly.
+                    //AddReference(asmName);
+                }
+                TargetAssemblies.Add(targetPath);
             }
-            TargetAssemblies.Add(target);
         }
 
-        public static void AddReference(Assembly refAsm)
-        {
-            if (refAsm == null) return;
-            ReferenceAssemblies.Add(refAsm);
-        }
+        //public static void AddReference(AssemblyName refAsm)
+        //{
+        //    if (refAsm == null) return;
+        //    ReferenceAssemblies.Add(refAsm);
+        //}
 
         public static void ClearTargets()
         {
@@ -85,12 +83,12 @@ namespace MInt
         {
             DefaultAssemblyResolver asmResolver = new DefaultAssemblyResolver();
             _refPathsHash.Clear();
-            foreach (Assembly refAsm in ReferenceAssemblies)
+            foreach (string refAsm in ReferenceAssemblies)
             {
-                string refPath = Path.GetDirectoryName(refAsm.Location);
+                string refPath = Path.GetDirectoryName(refAsm);
                 if (_refPathsHash.Add(refPath))
                 {
-                    Console.WriteLine(refAsm.Location);
+                    Console.WriteLine(refAsm);
                     asmResolver.AddSearchDirectory(refPath);
                 }
             }
@@ -101,9 +99,9 @@ namespace MInt
                 AssemblyResolver = asmResolver,
             };
             WriterParameters writeParams = new WriterParameters() { WriteSymbols = true };
-            foreach (Assembly targetAsm in TargetAssemblies)
+            foreach (string targetAsm in TargetAssemblies)
             {
-                using (AssemblyDefinition targetAsmDef = AssemblyDefinition.ReadAssembly(targetAsm.Location, readParams))
+                using (AssemblyDefinition targetAsmDef = AssemblyDefinition.ReadAssembly(targetAsm, readParams))
                 {
                     InstrumentTarget(targetAsmDef);
                     targetAsmDef.Write(writeParams);
@@ -130,9 +128,6 @@ namespace MInt
             MethodReference setupMR = targetModDef.ImportReference(setupMD);
             MethodReference startSpanMR = targetModDef.ImportReference(startSpanMD);
             MethodReference endSpanMR = targetModDef.ImportReference(endSpanMD);
-
-            // TypeDefinition ulongTD = setupMD.ReturnType.Resolve();
-            // TypeReference ulongTR = targetModDef.ImportReference(ulongTD);
 
             foreach (TypeDefinition td in targetModDef.Types)
             {
@@ -193,13 +188,6 @@ namespace MInt
         public static void ILMethodIntrument(MethodDefinition md, long methodID, MethodReference startMR, MethodReference endMR)
         {
             Mono.Cecil.Cil.MethodBody mb = md.Body;
-            // ILProcessor ilp = mb.GetILProcessor();
-
-            // if (mb.Instructions.Count == 0) ilp.Append(ilp.Create(OpCodes.Nop));
-
-            // create a local to trap the ulong ret val
-            // ilp.InsertBefore(mb.Instructions[0], ilp.Create(OpCodes.Call, startMR));
-            // ilp.InsertBefore(mb.Instructions[0], ilp.Create(OpCodes.Ldc_I8, methodID));
 
             Instruction startInst;
             List<Instruction> endInst = new List<Instruction>();
@@ -212,8 +200,6 @@ namespace MInt
                     case Code.Ret:
                     case Code.Throw:
                     case Code.Rethrow:
-                        // ilp.InsertBefore(inst, ilp.Create(OpCodes.Call, startMR));
-                        // ilp.InsertBefore(inst, ilp.Create(OpCodes.Ldc_I8, methodID));
                         endInst.Add(inst);
                         Console.WriteLine(" -- EndMSpan");
                         break;
@@ -221,11 +207,11 @@ namespace MInt
                 Console.WriteLine(inst.OpCode.Name);
             }
 
+            mb.InitLocals = true;
             VariableDefinition vd = new VariableDefinition(startMR.ReturnType);
             mb.Variables.Add(vd);
 
             ILProcessor ilp = mb.GetILProcessor();
-            if (mb.Instructions.Count == 0) ilp.Append(ilp.Create(OpCodes.Nop));
 
             startInst = mb.Instructions[0];
             if (startInst.OpCode.Code != Code.Nop)
@@ -234,6 +220,7 @@ namespace MInt
                 startInst = mb.Instructions[0];
             }
 
+            ilp.InsertBefore(startInst, ilp.Create(OpCodes.Nop));
             ilp.InsertBefore(startInst, ilp.Create(OpCodes.Ldc_I8, methodID));
             ilp.InsertBefore(startInst, ilp.Create(OpCodes.Call, startMR));
             ilp.InsertBefore(startInst, ilp.Create(OpCodes.Stloc, vd));
@@ -243,6 +230,7 @@ namespace MInt
                 ilp.InsertBefore(inst, ilp.Create(OpCodes.Ldloc, vd));
                 ilp.InsertBefore(inst, ilp.Create(OpCodes.Call, endMR));
             }
+            ilp.Body.OptimizeMacros();
         }
     }
 }
